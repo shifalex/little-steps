@@ -164,8 +164,13 @@
       // Compare the just-completed attempt only with its immediate predecessor.
       // Use the answers received at those attempts, never an archive search or future fact.
       const previous = this.history.at(-1), current = this.memory.get(key(f));
-      const comparison = { previousStep: previous?.step ?? null, currentStep: this.step, attempted: false, evidenceAdded: [], acquired: [] };
-      if (!previous || !current || this.random() >= this.config.comparison) return comparison;
+      const comparison = { previousStep: previous?.step ?? null, currentStep: this.step, distance: null, probability: 0, attempted: false, evidenceAdded: [], acquired: [] };
+      if (!previous || !current) return comparison;
+      // Explicit toy edit distance: unit changes in both operands and the observed
+      // answer, plus one for changing the operation. No correct-answer oracle.
+      comparison.distance = Math.abs(previous.a - f.a) + Math.abs(previous.b - f.b) + Math.abs(previous.observedAnswer - current.value) + Number(previous.op !== f.op);
+      comparison.probability = this.config.comparison / Math.max(1, comparison.distance);
+      if (this.random() >= comparison.probability) return comparison;
       comparison.attempted = true;
       const p = previous, pv = previous.observedAnswer, cv = current.value;
       const pairKey = [key(p), key(f)].sort().join('|');
@@ -208,7 +213,7 @@
         this.remember(fact, answer(fact));
       } else this.remember(fact, result.value);
       const comparison = this.discover(fact);
-      const learningCost = Number(comparison.attempted) * this.config.weights.compare;
+      const learningCost = comparison.attempted ? Math.max(1, comparison.distance) * this.config.weights.compare : 0;
       if (result.rule) { const r = this.rules[result.rule]; r.uses++; if (result.correct) r.successes++; r.strength = Math.min(1, r.strength + this.config.learning * 0.1); }
       const record = { step: this.step, ...fact, expected: answer(fact), ...result, observedAnswer: this.memory.get(key(fact)).value, comparison, feedbackCost, learningCost, totalCost: result.cost + feedbackCost + learningCost, lessons: this.events.map(e => e.rule) };
       this.history.push(record);
