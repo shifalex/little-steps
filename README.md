@@ -1,5 +1,7 @@
 # Little Steps — arithmetic learning lab
 
+**[Open the live simulator](https://shifalex.github.io/little-steps/)**
+
 A browser-based experiment in learning addition and subtraction facts through counting, memory, comparison, and teacher lessons. Adjust learner settings, compare practice schedules (including deliberate practice), inspect strategy and cost curves, and explore the final addition-memory heatmap.
 
 See [ROADMAP.md](ROADMAP.md) for designed features that are not yet implemented.
