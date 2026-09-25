@@ -161,45 +161,38 @@
       this.recallCache.clear();
     }
     discover(f) {
-      const k = key(f); const current = this.memory.get(k);
-      if (!current) return;
+      // Compare the just-completed attempt only with its immediate predecessor.
+      // Use the answers received at those attempts, never an archive search or future fact.
+      const previous = this.history.at(-1), current = this.memory.get(key(f));
+      const comparison = { previousStep: previous?.step ?? null, currentStep: this.step, attempted: false, evidenceAdded: [], acquired: [] };
+      if (!previous || !current || this.random() >= this.config.comparison) return comparison;
+      comparison.attempted = true;
+      const p = previous, pv = previous.observedAnswer, cv = current.value;
+      const pairKey = [key(p), key(f)].sort().join('|');
+      if (key(p) === key(f)) return comparison;
       const candidates = [];
-      const observedEquation = fact => `${fact.a} ${fact.op === '-' ? '−' : '+'} ${fact.b} = ${this.memory.get(key(fact)).value}`;
-      if (f.b === 0 && current.value === f.a) candidates.push(['zero', k, observedEquation(f)]);
-      if (f.op === '-' && f.a === f.b && current.value === 0) candidates.push(['self', k, observedEquation(f)]);
-      const observed = this.memory;
-      if (f.op === '+' && f.a !== f.b) {
-        const reverse = { a: f.b, b: f.a, op: '+' };
-        if (observed.get(key(reverse))?.value === current.value) candidates.push(['commutative', [k, key(reverse)].sort().join('|'), `${observedEquation(reverse)} → ${observedEquation(f)}`]);
+      if (p.b === 0 && f.b === 0 && pv === p.a && cv === f.a) candidates.push('zero');
+      if (p.op === '-' && f.op === '-' && p.a === p.b && f.a === f.b && pv === 0 && cv === 0) candidates.push('self');
+      if (p.op === '+' && f.op === '+') {
+        if (p.a === f.b && p.b === f.a && pv === cv) candidates.push('commutative');
+        if (p.a === f.a && Math.abs(p.b - f.b) === 1 && cv - pv === f.b - p.b) candidates.push('neighbor');
       }
-      if (f.op === '+') {
-        for (const delta of [-1, 1]) {
-          const near = { a: f.a, b: f.b + delta, op: '+' };
-          if (near.b >= 0 && answer(near) <= 10 && observed.get(key(near))?.value === current.value + delta) {
-            const lower = delta === -1 ? near : f, upper = delta === -1 ? f : near;
-            candidates.push(['neighbor', [k, key(near)].sort().join('|'), `${observedEquation(lower)} → ${observedEquation(upper)}`]);
-          }
-        }
+      if (p.op !== f.op) {
+        const add = p.op === '+' ? p : f, sub = p.op === '-' ? p : f;
+        const sum = p.op === '+' ? pv : cv, difference = p.op === '-' ? pv : cv;
+        if (sub.a === sum && ((sub.b === add.a && difference === add.b) || (sub.b === add.b && difference === add.a))) candidates.push('inverse');
       }
-      // Discover links regardless of which operation was encountered last.
-      for (const m of observed.values()) {
-        const a = m.fact;
-        if (a.op !== '+') continue;
-        for (const b of [a.a, a.b]) {
-          const sub = { a: m.value, b, op: '-' };
-          const otherOperand = a.a === b ? a.b : a.a;
-          if ((key(a) === k || key(sub) === k) && observed.get(key(sub))?.value === otherOperand) candidates.push(['inverse', `${key(a)}|${key(sub)}`, `${observedEquation(a)} → ${observedEquation(sub)}`]);
-        }
-      }
-      let checks = 0;
-      for (const [id, evidenceKey, example] of candidates) {
+      const observedEquation = (fact, value) => `${fact.a} ${fact.op === '-' ? '−' : '+'} ${fact.b} = ${value}`;
+      const example = `${observedEquation(p, pv)} → ${observedEquation(f, cv)} (attempts ${p.step}–${this.step})`;
+      for (const id of candidates) {
         const rule = this.rules[id];
-        if (rule.evidenceKeys.has(evidenceKey) || this.random() >= this.config.comparison) continue;
-        checks++; rule.evidenceKeys.add(evidenceKey); rule.evidence.push(example);
-        if (!rule.origin && rule.evidence.length >= 3) { rule.origin = 'implicit'; rule.learnedAt = this.step; rule.strength = 0.8; }
-        else if (rule.origin) rule.strength = Math.min(1, rule.strength + this.config.learning * 0.2);
+        if (rule.evidenceKeys.has(pairKey)) continue;
+        rule.evidenceKeys.add(pairKey); rule.evidence.push(example); comparison.evidenceAdded.push(id);
+        if (!rule.origin && rule.evidence.length >= 3) {
+          rule.origin = 'implicit'; rule.learnedAt = this.step; rule.strength = 0.8; comparison.acquired.push(id);
+        } else if (rule.origin) rule.strength = Math.min(1, rule.strength + this.config.learning * 0.2);
       }
-      return checks;
+      return comparison;
     }
     next(forcedFact) {
       this.step++; this.decay();
@@ -214,10 +207,10 @@
         feedbackCost = (fact.a + fact.b) * w.draw + (fact.op === '+' ? fact.a + fact.b : fact.a - fact.b) * w.count + (fact.op === '-' ? fact.b * w.remove : 0);
         this.remember(fact, answer(fact));
       } else this.remember(fact, result.value);
-      const discoveryChecks = this.discover(fact) || 0;
-      const learningCost = discoveryChecks * this.config.weights.compare;
+      const comparison = this.discover(fact);
+      const learningCost = Number(comparison.attempted) * this.config.weights.compare;
       if (result.rule) { const r = this.rules[result.rule]; r.uses++; if (result.correct) r.successes++; r.strength = Math.min(1, r.strength + this.config.learning * 0.1); }
-      const record = { step: this.step, ...fact, expected: answer(fact), ...result, feedbackCost, learningCost, totalCost: result.cost + feedbackCost + learningCost, lessons: this.events.map(e => e.rule) };
+      const record = { step: this.step, ...fact, expected: answer(fact), ...result, observedAnswer: this.memory.get(key(fact)).value, comparison, feedbackCost, learningCost, totalCost: result.cost + feedbackCost + learningCost, lessons: this.events.map(e => e.rule) };
       this.history.push(record);
       if (this.step % 50 === 0) this.diagnostics.push(this.assess());
       return record;

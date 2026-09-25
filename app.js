@@ -6,7 +6,7 @@ const colors = { draw: '#9da8ac', count: '#4d8bd6', compare: '#ab79cf', rule: '#
 const names = { draw: 'Draw & count', count: 'Count shortcut', compare: 'Compare facts', rule: 'Apply a rule', recall: 'Direct recall' };
 const sliderDefs = [
   ['forgetting', 'Random forgetfulness', 'Weakens learned answers and rules between attempts.'],
-  ['comparison', 'Comparison ability', 'Notices and uses relationships between facts.'],
+  ['comparison', 'Comparison ability', 'Chance of comparing consecutive attempts to discover a rule; also gates using learned analogies.'],
   ['learning', 'Learning rate', 'Strength gained from each encounter.'],
   ['confidence', 'Recall confidence', 'Strength required to trust an answer or rule.'],
   ['exploration', 'Strategy exploration', 'Chance of trying another available route.'],
@@ -144,7 +144,9 @@ function renderAttempt() {
   const actionText = Object.entries(row.actions).map(([id, n]) => `${n} ${id}`).join(' + ');
   $('attempt-cost').textContent = `${row.cost.toFixed(1)} solving units · ${actionText}`;
   $('attempt-number').textContent = `${row.step} / ${simulation.step}`;
-  $('attempt-meta').textContent = `${row.correct ? 'Correct' : `Incorrect · correct answer: ${row.expected}`} · Feedback cost ${row.feedbackCost.toFixed(1)} · Learning comparisons ${row.learningCost.toFixed(1)} · Total ${row.totalCost.toFixed(1)} · Model confidence ${percent(row.recallConfidence)}${row.activation !== null ? ` · Activation ${row.activation.toFixed(2)}` : ''}`;
+  $('attempt-meta').textContent = `${row.correct ? 'Correct' : `Incorrect · correct answer: ${row.expected}`} · Feedback cost ${row.feedbackCost.toFixed(1)} · Comparison cost ${row.learningCost.toFixed(1)} · Total ${row.totalCost.toFixed(1)} · Model confidence ${percent(row.recallConfidence)}${row.activation !== null ? ` · Activation ${row.activation.toFixed(2)}` : ''}`;
+  const comparison = row.comparison;
+  $('attempt-meta').textContent += comparison.previousStep === null ? ' · No previous attempt to compare.' : comparison.attempted ? ` · Compared attempts ${comparison.previousStep} and ${row.step}: ${comparison.evidenceAdded.length ? comparison.evidenceAdded.map(id => ruleDefs[id].name).join(', ') : 'no new supporting pattern'}.${comparison.acquired.length ? ' Acquired: ' + comparison.acquired.map(id => ruleDefs[id].name).join(', ') + '.' : ''}` : ' · Comparison with previous attempt skipped by comparison index.';
 }
 function renderMix() {
   $('strategy-mix').innerHTML = Array.from({ length: 4 }, (_, i) => {
