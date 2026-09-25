@@ -42,11 +42,14 @@ function dirty() { $('settings-status').textContent = 'Settings changed · run t
 $('settings').addEventListener('input', dirty);
 $('order').addEventListener('change', () => { $('order-description').hidden = $('order').value !== 'deliberate'; });
 function run() {
+  const scrollPosition = { left: window.scrollX, top: window.scrollY, behavior: 'instant' };
   simulation = new Simulator(configFromForm()).run();
   $('settings-status').textContent = `Run complete · seed ${simulation.config.seed}.`;
   $('run-title').textContent = `A learner, ${simulation.step.toLocaleString()} little steps.`;
   $('attempt').max = simulation.step; $('attempt').value = simulation.step;
   render();
+  window.scrollTo(scrollPosition);
+  requestAnimationFrame(() => window.scrollTo(scrollPosition));
 }
 $('settings').addEventListener('submit', event => { event.preventDefault(); run(); });
 function selectedMetric(d) { return operation === '+' ? d.addition : operation === '-' ? d.subtraction : d; }

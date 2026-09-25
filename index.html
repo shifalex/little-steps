@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Little Steps · Learning Lab</title><link rel="stylesheet" href="styles.css"><script src="engine.js" defer></script><script src="app.js" defer></script></head>
 <body>
-<header><div class="brand"><span class="brand-icon">∴</span><div>little steps<span class="brand-sub">ARITHMETIC LEARNING LAB</span></div></div><div class="header-note"><span class="live-dot"></span> Local simulation · Model v0.1</div><button id="export" class="button secondary">Export run ↗</button></header>
+<header><div class="brand"><span class="brand-icon">∴</span><div>little steps<span class="brand-sub">ARITHMETIC LEARNING LAB</span></div></div><div class="header-note"><span class="live-dot"></span> Local simulation · Model v0.1</div><button class="button primary run-button" type="submit" form="settings">Run experiment <span>→</span></button><button id="export" class="button secondary">Export run ↗</button></header>
 <main>
 <section class="intro"><div><p class="eyebrow">FROM COUNTING TO KNOWING</p><h1>How does a learner <em>learn?</em></h1><p>Give a small learner a little practice. Watch its effort, strategies, and discoveries change.</p></div><div class="domain-pill">a + b = c ≤ 10<br><span>Addition + subtraction · zero included</span></div></section>
 <div class="workspace">
 <aside>
 <form id="settings">
+<p id="settings-status" class="micro" role="status">Same seed + settings = same experiment.</p>
 <div class="section-title"><h2>The learner</h2><span class="small-label">01</span></div><p class="aside-description">Already recognizes numbers and can draw and count from one.</p>
 <div id="sliders"></div>
 <div class="section-title divided"><h2>The practice</h2><span class="small-label">02</span></div>
@@ -17,7 +18,6 @@
 <div class="section-title divided"><h2>Teacher moments</h2><span class="small-label">03</span></div><p class="aside-description">Lessons become available before the chosen attempt.</p>
 <div id="lessons"></div><button id="add-lesson" class="text-button" type="button">+ Add a lesson</button>
 <details class="cost-settings"><summary>Calculation cost weights</summary><p class="aside-description">Abstract units per action. Reading and writing are excluded.</p><div id="weights"></div></details>
-<button class="button primary run-button" type="submit">Run experiment <span>→</span></button><p id="settings-status" class="micro">Same seed + settings = same experiment.</p>
 </form>
 </aside>
 <section class="results" aria-label="Simulation results">
