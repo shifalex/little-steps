@@ -8,4 +8,4 @@ These features have been discussed but are not implemented in the current site:
 - Readiness measured either by exercise accuracy or prerequisite-strategy execution accuracy.
 - Procedural proficiency distinct from individual counting/matching slips, improving with practice and corrective feedback.
 - Separate recall memories and heatmaps for each missing position, with learned transfer through matching and inverse-operation relationships.
-- Open-ended rule discovery, alternative learners including neural networks, and validation against child-learning datasets.
+- Open-ended rule discovery, a full cognitive architecture beyond the current ACT-R-inspired memory component, and validation against child-learning datasets.

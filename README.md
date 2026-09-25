@@ -8,7 +8,37 @@ See [ROADMAP.md](ROADMAP.md) for designed features that are not yet implemented.
 
 Open **index.html** in a modern browser. No installation or build is required. The app runs locally; no learner data is uploaded. Fonts are optional web fonts with local fallbacks.
 
-This is the first runnable **strategy-based algorithm**, not a neural network and not a validated model of a child. It implements the shared experiment interface that future learners can reproduce.
+Choose among **associative memory**, **ACT-R-inspired declarative memory**, and a real **neural network (MLP)**. All share the same strategy-based solver and explicit candidate-rule system. These are experimental models, not validated models of children. Use **Compare all 3 models** for a final assessment table; keep a baseline and change models for curve comparisons.
+
+## Learning models
+
+### Associative memory
+
+The original per-fact answer and strength table. Learning rate strengthens each observed answer; random forgetting weakens accessibility. This remains the default.
+
+### ACT-R-inspired memory (simplified)
+
+Each exercise-answer chunk retains its encoding timestamps. At trial t its activation is B = ln(Σ max(1, t−timestamp)^−d), with the Forgetfulness slider used as decay exponent d. Availability is p = 1 / (1 + exp(−(B−τ)/s)), where τ is the activation threshold and s is retrieval noise. The highest-activation answer chunk is the candidate. The shared confidence threshold gates p. When direct recall is selected, a seeded Bernoulli draw with probability p determines retrieval success; failure costs a retrieval action and falls back to a non-recall strategy. Distinct wrong-answer chunks can persist and compete with correct ones. One feedback encoding is recorded per practice attempt; the Learning rate slider affects the shared rule mechanism but not ACT-R encoding frequency.
+
+The heatmap also exposes exp(−B) as an arbitrary-unit retrieval-latency proxy. It is not calibrated seconds and is not added to the shared action-cost curve. This implementation does not reproduce ACT-R buffers, production compilation, utility learning, spreading activation, partial matching, or motor/perceptual modules. Analogical anchor lookups use deterministic confidence gating, not stochastic ACT-R retrieval. Shared rule strengths retain the original random forgetting model. Trial indices substitute for elapsed time; these simplifications must be considered before comparisons to child data.
+
+The activation, probability, and latency ideas are based on [Anderson et al. (2004), An Integrated Theory of the Mind](https://www.cs.utexas.edu/~dana/ACT-R.pdf). We implement a small declarative-memory component, not the full cognitive architecture.
+
+### Neural network (MLP)
+
+Input: 24 features (11-way one-hot first operand, 11-way second operand, and 2-way operation). There are 16, 32, or 64 tanh hidden units, then 11 softmax answer classes (0–10). Training uses actual backpropagation and stochastic gradient descent on cross-entropy. It receives only the feedback selected by the experiment; it has no pretrained arithmetic weights or answer-table lookup for predictions.
+
+Each trial trains once on the current feedback and optionally performs extra updates on uniformly sampled examples from the most recent 256 feedback events. Updates per attempt is adjustable; 1 disables replay. Default 8 means 800 exercises produce 6,400 gradient updates, not 800. Learning rate is the SGD step size. Forgetfulness multiplies weights and biases by 1−forgetting×0.0005 per trial; this is a toy regularization/forgetting assumption, not a biological claim. New examples can also cause interference. Initialization and replay have their own seeded RNG, independent from exercise ordering and assessment.
+
+The top softmax class is the proposed answer and its probability is the confidence score. Generalization can occur for facts not directly practiced. The UI groups a direct neural response with recall for cost comparison; that does not establish literal memorization. The rule notebook remains an explicit pattern checker over received examples and does not decode rules from neural weights. See [cross-entropy documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html) for the objective; this implementation is dependency-free JavaScript, not PyTorch.
+
+### Fair comparisons and inspection
+
+All models receive the same seeded non-adaptive exercise sequence, same feedback policy, and same lessons. Deliberate practice adapts to each model's scores and therefore produces different sequences. Equal exercise counts are not equal computation budgets. Equal numeric confidence scores also have different meanings: association strength, activation-derived availability, or softmax probability; none is empirically calibrated to child accuracy.
+
+Full-solver accuracy includes counting and rules. Unaided accuracy compares each model's top answer to the correct answer without confidence gating, counting, rule help, or ACT-R failure sampling; absent answers count as wrong. Coverage reports the fraction above confidence threshold. Correctness among those responses is reported separately. These quantities prevent counting fallbacks from concealing a weak prediction model. Fixed assessments never train or consume the practice/replay RNG streams.
+
+JSON exports include model configuration, final per-fact predictions, training update counts, ACT-R chunks/timestamps or neural weights/replay examples, and any three-model comparison runs. Exported runs are snapshots for analysis, not a supported import/resume format.
 
 ## Initial domain
 
@@ -16,7 +46,7 @@ All nonnegative integer fact families a + b = c with c ≤ 10: 66 ordered additi
 
 The learner recognizes numbers and can draw arrays and count from one. Addition draws a+b marks and counts a+b marks. Subtraction draws a marks plus b removal markers, removes b marks, and counts a−b marks. Reading and writing have no modeled cost. Empty arrays require zero mark operations.
 
-## Learning assumptions
+## Shared strategy layer and original associative-model assumptions
 
 - Each fact stores one answer and a strength. After an encounter its strength increases by learningRate × (1−strength). A different answer replaces the stored answer. With answer feedback the correct answer is stored; without correction the produced answer is stored.
 - Per practice step, fact strengths decay by 1−forgetting×0.002. Each independently has forgetting×0.006 probability of losing 55% of its remaining strength. Rules decay more slowly (factor 1−forgetting×0.0005; shock probability forgetting×0.001; shock retains 70%). These constants are assumptions, not fitted psychological estimates.
@@ -45,6 +75,6 @@ Research starting points:
 
 ## Verification
 
-Run `node engine.test.js`. Engine exports work in both Node and the browser. There are no external JavaScript dependencies.
+Run `node engine.test.js` and `node models.test.js`. The latter checks activation math, neural gradients against numerical derivatives, feedback-only learning, deterministic matched curricula, and diagnostic non-interference. Engine exports work in both Node and the browser. There are no external JavaScript dependencies.
 
-Files: `engine.js` (learner and experiment), `app.js` (controls, charts, exports), `index.html`, `styles.css`, and `engine.test.js`.
+Files: `engine.js` (learner and experiment), `models.js` (activation memory and neural network), `app.js` (controls, charts, exports), `index.html`, `styles.css`, `engine.test.js`, and `models.test.js`.

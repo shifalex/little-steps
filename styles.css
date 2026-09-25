@@ -5,3 +5,4 @@
 /* Keep the primary action reachable without scrolling away from results. */
 header{position:sticky;top:0;z-index:20;box-shadow:0 2px 10px #21362f08;gap:16px}header .run-button{width:auto;margin:0;gap:22px;flex-shrink:0}#settings-status{margin:0 0 18px}html{scroll-padding-top:105px}@media(max-width:730px){header{height:auto;min-height:75px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px;gap:10px}header .run-button{order:3;width:100%;margin:0}html{scroll-padding-top:135px}}
 .results{overflow-anchor:none}
+.comparison-table{width:100%;border-collapse:collapse;font-size:11px;min-width:570px}.comparison-table th,.comparison-table td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line)}.comparison-table thead{color:var(--muted);background:var(--light)}button:disabled{opacity:.6;cursor:wait}

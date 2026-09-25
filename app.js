@@ -1,5 +1,6 @@
 'use strict';
 const { Simulator, defaults, ruleDefs } = NeuralLab;
+const modelLabels = LearningModels.labels;
 const $ = id => document.getElementById(id);
 const colors = { draw: '#9da8ac', count: '#4d8bd6', compare: '#ab79cf', rule: '#d89c35', recall: '#278b70' };
 const names = { draw: 'Draw & count', count: 'Count shortcut', compare: 'Compare facts', rule: 'Apply a rule', recall: 'Direct recall' };
@@ -31,9 +32,25 @@ function addLesson(step = 300, rule = 'commutative') {
 }
 defaults.lessons.forEach(l => addLesson(l.step, l.rule));
 $('add-lesson').addEventListener('click', () => { addLesson(); dirty(); });
-let simulation, baseline = null, view = 'practice', operation = 'all';
+let simulation, baseline = null, modelComparison = null, view = 'practice', operation = 'all';
+function updateModelControls() {
+  const model = $('learning-model').value;
+  $('actr-settings').hidden = model !== 'actr';
+  $('neural-settings').hidden = model !== 'neural';
+  $('model-description').textContent = {
+    associative: 'Original fact-strength table with random forgetting. Each practice encounter strengthens its answer.',
+    actr: 'Simplified declarative memory, inspired by ACT-R. Repetition and recency set activation; retrieval can fail. Forgetfulness is the power-law decay exponent. Not the full ACT-R architecture.',
+    neural: 'A real 24 → hidden → 11 neural network. Learns online using backpropagation and replay. Forgetfulness controls weight shrinkage; new learning can also interfere with old learning.'
+  }[model];
+  $('learning').disabled = false;
+  $('learning').closest('label').querySelector('small').textContent = model === 'actr' ? 'Not used for ACT-R fact activation; still governs shared rule strengthening.' : model === 'neural' ? 'Gradient-descent step size (SGD).' : 'Strength gained from each encounter.';
+  $('forgetting').closest('label').querySelector('small').textContent = model === 'actr' ? 'Decay exponent d; 0 means no time decay. Shared rules retain random forgetting.' : model === 'neural' ? 'Weight shrinkage; shared rules retain random forgetting.' : 'Weakens learned answers and rules between attempts.';
+}
+$('learning-model').addEventListener('change', updateModelControls);
+updateModelControls();
 function configFromForm() {
   return { ...Object.fromEntries(sliderDefs.map(([id]) => [id, +$(id).value])), steps: +$('steps').value, seed: +$('seed').value,
+    model: $('learning-model').value, hidden: +$('hidden-neurons').value, replayUpdates: +$('replay-updates').value, actrThreshold: +$('actr-threshold').value, actrNoise: +$('actr-noise').value,
     order: $('order').value, feedback: $('feedback').value,
     weights: Object.fromEntries(Object.keys(defaults.weights).map(id => [id, +$(`weight-${id}`).value])),
     lessons: [...$('lessons').children].map(el => ({ step: +el.querySelector('input').value, rule: el.querySelector('select').value })) };
@@ -44,6 +61,7 @@ $('order').addEventListener('change', () => { $('order-description').hidden = $(
 function run() {
   const scrollPosition = { left: window.scrollX, top: window.scrollY, behavior: 'instant' };
   simulation = new Simulator(configFromForm()).run();
+  modelComparison = null;
   $('settings-status').textContent = `Run complete · seed ${simulation.config.seed}.`;
   $('run-title').textContent = `A learner, ${simulation.step.toLocaleString()} little steps.`;
   $('attempt').max = simulation.step; $('attempt').value = simulation.step;
@@ -61,7 +79,7 @@ function renderMetrics() {
   const items = [
     ['Assessment accuracy', percent(last.accuracy), delta ? `${((last.accuracy - delta.accuracy) * 100).toFixed(1)} pp vs baseline end` : `${last.n} facts · no learning during assessment`],
     ['Mean solving cost', last.cost.toFixed(1), delta ? `${(last.cost - delta.cost).toFixed(1)} units vs baseline end` : `Started at ${first.cost.toFixed(1)} effort units`],
-    ['Direct recall', percent(last.recall), 'Share of final assessment solutions'],
+    ['Recall / model response', percent(last.recall), 'Share of final assessment solutions'],
     ['Rules learned', rules.length, `${rules.filter(r => r.origin.includes('implicit')).length} inferred · ${rules.filter(r => r.origin.includes('taught')).length} taught`]
   ];
   $('metrics').innerHTML = items.map(([label, value, detail]) => `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-detail">${detail}</div></div>`).join('');
@@ -111,7 +129,7 @@ function drawCurve() {
     $('curve-subtitle').textContent = 'Mean solving cost on the same exercise set · assessed every 50 attempts';
     $('chart-note').textContent = 'Green: current run. Dashed gray: saved baseline, when present. Each assessment uses all eligible facts for this filter and does not train the learner. These are simulated action costs, not seconds.';
   }
-  $('baseline-status').textContent = baseline ? `Baseline: ${baseline.step} attempts · seed ${baseline.config.seed}${view === 'practice' ? ' · view in assessment' : ''}` : 'No baseline saved';
+  $('baseline-status').textContent = baseline ? `${modelLabels[baseline.config.model] || 'Associative memory'} · ${baseline.step} attempts · seed ${baseline.config.seed}${view === 'practice' ? ' · view in assessment' : ''}` : 'No baseline saved';
   let lessonKey = $('lesson-key');
   if (!lessonKey) { lessonKey = document.createElement('p'); lessonKey.id = 'lesson-key'; lessonKey.className = 'chart-footnote'; $('chart-note').before(lessonKey); }
   lessonKey.textContent = simulation.events.map((e, i) => `L${i + 1} · ${e.step}: ${e.name}`).join('  /  ') || 'No lessons in this run.';
@@ -126,7 +144,7 @@ function renderAttempt() {
   const actionText = Object.entries(row.actions).map(([id, n]) => `${n} ${id}`).join(' + ');
   $('attempt-cost').textContent = `${row.cost.toFixed(1)} solving units · ${actionText}`;
   $('attempt-number').textContent = `${row.step} / ${simulation.step}`;
-  $('attempt-meta').textContent = `${row.correct ? 'Correct' : `Incorrect · correct answer: ${row.expected}`} · Feedback cost ${row.feedbackCost.toFixed(1)} · Learning comparisons ${row.learningCost.toFixed(1)} · Total ${row.totalCost.toFixed(1)}`;
+  $('attempt-meta').textContent = `${row.correct ? 'Correct' : `Incorrect · correct answer: ${row.expected}`} · Feedback cost ${row.feedbackCost.toFixed(1)} · Learning comparisons ${row.learningCost.toFixed(1)} · Total ${row.totalCost.toFixed(1)} · Model confidence ${percent(row.recallConfidence)}${row.activation !== null ? ` · Activation ${row.activation.toFixed(2)}` : ''}`;
 }
 function renderMix() {
   $('strategy-mix').innerHTML = Array.from({ length: 4 }, (_, i) => {
@@ -155,21 +173,21 @@ function renderHeatmap() {
   const head = `<thead><tr><th scope="col" aria-label="First operand plus second operand">+</th>${Array.from({ length: 11 }, (_, b) => `<th scope="col">${b}</th>`).join('')}</tr></thead>`;
   const body = Array.from({ length: 11 }, (_, a) => `<tr><th scope="row">${a}</th>${Array.from({ length: 11 }, (_, b) => {
     if (a + b > 10) return '<td class="heatmap-excluded" aria-label="Outside range">·</td>';
-    const k = `${a}+${b}`, m = simulation.memory.get(k);
+    const k = `${a}+${b}`, m = simulation.recallState({a, b, op:'+'});
     const correct = m && m.value === a + b;
     const ready = correct && m.strength >= simulation.config.confidence;
     if (ready) readyCount++;
     const strength = m ? m.strength : 0;
     const background = !m ? '#f6f7f3' : !correct ? '#fae4d9' : `hsl(154, 35%, ${96 - strength * 64}%)`;
     const foreground = correct && strength > .6 ? '#fff' : '#21362f';
-    const label = `${a} + ${b} = ${a + b}. ${m ? `Stored answer ${m.value}, strength ${percent(strength)}${correct ? '' : ', incorrect'}.` : 'Not encountered.'} ${counts.get(k) || 0} practice encounters.${ready ? ' Correct recall available.' : ''}`;
+    const label = `${a} + ${b} = ${a + b}. ${m ? `Model answer ${m.value}, score ${percent(strength)}${correct ? '' : ', incorrect'}.` : 'No learned response.'} ${counts.get(k) || 0} practice encounters.${ready ? ' Correct model response above threshold.' : ''}`;
     return `<td><button type="button" data-addition="${k}" style="background:${background};color:${foreground}" title="${label}" aria-label="${label}" aria-pressed="${selectedAddition === k}"><strong>${a + b}</strong><small>${!m ? '—' : `${!correct ? '× ' : ready ? '✓ ' : ''}${percent(strength)}`}</small></button></td>`;
   }).join('')}</tr>`).join('');
   $('addition-heatmap').innerHTML = `<caption>Addition facts with sums ≤ 10 · after ${simulation.step} attempts</caption>${head}<tbody>${body}</tbody>`;
-  $('heatmap-summary').textContent = `${readyCount} / 66 ready for correct recall`;
+  $('heatmap-summary').textContent = `${readyCount} / 66 correct above threshold`;
   const showDetail = k => {
-    const [a, b] = k.split('+').map(Number), m = simulation.memory.get(k);
-    $('heatmap-detail').textContent = `${a} + ${b} = ${a + b} · ${counts.get(k) || 0} practice encounters. ${m ? `Stored answer: ${m.value}${m.value !== a + b ? ' (incorrect)' : ''}. Strength: ${m.strength.toFixed(3)}; recall threshold: ${simulation.config.confidence.toFixed(2)}. ${m.strength >= simulation.config.confidence ? 'Stored answer is eligible for recall; strategy choice may still use another route.' : 'Below the recall threshold.'} Last encountered at attempt ${m.lastSeen}.` : 'No answer stored yet; counting or a learned rule may still solve it.'}`;
+    const [a, b] = k.split('+').map(Number), m = simulation.recallState({a,b,op:'+'});
+    $('heatmap-detail').textContent = `${a} + ${b} = ${a + b} · ${counts.get(k) || 0} practice encounters. ${m ? `Model answer: ${m.value}${m.value !== a + b ? ' (incorrect)' : ''}. Score: ${m.strength.toFixed(3)}; confidence threshold: ${simulation.config.confidence.toFixed(2)}. ${m.strength >= simulation.config.confidence ? 'Eligible for a direct response; another strategy or stochastic retrieval failure may intervene.' : 'Below the confidence threshold.'} ${m.lastSeen === null ? 'Not encountered directly: this is a neural generalization.' : `Last encountered at attempt ${m.lastSeen}.`}${m.activation !== undefined ? ` Activation: ${m.activation.toFixed(3)}; retrieval latency proxy: ${m.retrievalLatency.toFixed(3)} (arbitrary units, not seconds).` : ''}` : 'No learned response yet; counting or a learned rule may still solve it.'}`;
   };
   $('addition-heatmap').onclick = event => {
     const button = event.target.closest('button[data-addition]'); if (!button) return;
@@ -179,7 +197,24 @@ function renderHeatmap() {
   };
   if (selectedAddition) showDetail(selectedAddition);
 }
-function render() { renderMetrics(); drawCurve(); renderAttempt(); renderMix(); renderRules(); renderHeatmap(); }
+function renderModelReport() {
+  const id = simulation.config.model, unaided = simulation.diagnostics.at(-1).unaided;
+  $('active-model').textContent = modelLabels[id];
+  const work = simulation.recallModel ? `${simulation.recallModel.updates.toLocaleString()} ${id === 'neural' ? 'gradient updates' : 'encoding events'}` : `${simulation.step} fact updates`;
+  $('model-measurements').textContent = `Unaided answer accuracy: ${percent(unaided.accuracy)} · Responses above confidence threshold: ${percent(unaided.coverage)} · Accuracy among those responses: ${unaided.confidentAccuracy === null ? 'not available' : percent(unaided.confidentAccuracy)} · ${work}. Unaided accuracy scores the model’s top answer before confidence gating; missing responses count as incorrect. No counting, rule help, or ACT-R retrieval-failure sampling in this measure.`;
+  $('model-comparison').innerHTML = modelComparison ? `<div class="heatmap-scroll"><table class="comparison-table"><thead><tr><th>Model</th><th>Full accuracy</th><th>Mean cost</th><th>Unaided accuracy</th><th>Above threshold</th><th>Training updates</th></tr></thead><tbody>${modelComparison.map(s => { const d = s.diagnostics.at(-1); return `<tr><th>${modelLabels[s.config.model]}</th><td>${percent(d.accuracy)}</td><td>${d.cost.toFixed(1)}</td><td>${percent(d.unaided.accuracy)}</td><td>${percent(d.unaided.coverage)}</td><td>${s.recallModel?.updates ?? s.step}</td></tr>`; }).join('')}</tbody></table></div><p class="micro">Compared using the current completed run’s settings, ${simulation.step} attempts, seed ${simulation.config.seed}. ${simulation.config.order === 'deliberate' ? 'Adaptive schedules differ between learners.' : 'Identical exercise order for all learners.'} Heatmap and curves still show ${modelLabels[id]}.</p>` : '';
+  $('heatmap-title').textContent = id === 'neural' ? 'Addition prediction map' : 'Addition memory map';
+}
+function render() { renderMetrics(); drawCurve(); renderAttempt(); renderMix(); renderRules(); renderHeatmap(); renderModelReport(); }
+$('compare-models').addEventListener('click', async () => {
+  const button = $('compare-models'); button.disabled = true; button.textContent = 'Comparing…';
+  document.querySelector('.run-button').disabled = true;
+  try {
+    await new Promise(resolve => setTimeout(resolve, 25));
+    modelComparison = Object.keys(modelLabels).map(model => model === simulation.config.model ? simulation : new Simulator({ ...simulation.config, model }).run());
+    renderModelReport();
+  } finally { button.disabled = false; button.textContent = 'Compare all 3 models'; document.querySelector('.run-button').disabled = false; }
+});
 $('attempt').addEventListener('input', renderAttempt);
 $('op-filter').addEventListener('change', () => { operation = $('op-filter').value; render(); });
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('selected', b === button)); drawCurve(); }));
@@ -193,7 +228,7 @@ $('curve').addEventListener('click', event => {
   $('attempt').value = nearest.step; renderAttempt();
 });
 $('export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ current: simulation.export(), baseline }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ current: simulation.export(), baseline, modelComparison: modelComparison?.map(s => s.export()) ?? null }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `little-steps-seed-${simulation.config.seed}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 window.addEventListener('resize', () => simulation && drawCurve());

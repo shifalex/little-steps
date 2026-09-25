@@ -1,8 +1,8 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./models') : root.LearningModels);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NeuralLab = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (models) {
   'use strict';
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
   const key = f => `${f.a}${f.op}${f.b}`;
@@ -29,12 +29,14 @@
     countOn: { name: 'Count on from an operand', statement: 'For a + b, start at a and take b forward counting steps.' },
     countUp: { name: 'Count up to subtract', statement: 'For a − b, count forward from b to a; the number of steps is the answer.' }
   };
-  const defaults = { seed: 42, steps: 800, forgetting: 0.15, comparison: 0.65, learning: 0.24, confidence: 0.65, exploration: 0.08, slip: 0.015, order: 'mixed', feedback: 'answer', weights: { draw: 1, count: 1, remove: 1, retrieve: 1, rule: 1, compare: 1 }, lessons: [{ step: 180, rule: 'countOn' }, { step: 400, rule: 'countUp' }] };
+  const defaults = { model: 'associative', hidden: 32, replayUpdates: 8, actrThreshold: 0, actrNoise: 0.4, seed: 42, steps: 800, forgetting: 0.15, comparison: 0.65, learning: 0.24, confidence: 0.65, exploration: 0.08, slip: 0.015, order: 'mixed', feedback: 'answer', weights: { draw: 1, count: 1, remove: 1, retrieve: 1, rule: 1, compare: 1 }, lessons: [{ step: 180, rule: 'countOn' }, { step: 400, rule: 'countUp' }] };
   class Simulator {
     constructor(config = {}) {
       this.config = { ...defaults, ...config, weights: { ...defaults.weights, ...(config.weights || {}) }, lessons: (config.lessons || defaults.lessons).map(x => ({ ...x })) };
       this.random = rng(this.config.seed);
       this.exerciseRandom = rng((this.config.seed + 48109) >>> 0);
+      this.recallModel = this.config.model === 'actr' ? new models.ActivationMemory(this.config) : this.config.model === 'neural' ? new models.NeuralMemory(this.config, rng((this.config.seed + 7717) >>> 0)) : null;
+      this.recallCache = new Map();
       this.facts = domain(); this.memory = new Map(); this.rules = {}; this.history = []; this.diagnostics = []; this.events = []; this.step = 0;
       for (const id of Object.keys(ruleDefs)) this.rules[id] = { id, ...ruleDefs[id], evidence: [], evidenceKeys: new Set(), strength: 0, origin: null, learnedAt: null, uses: 0, successes: 0 };
       this.diagnostics.push(this.assess());
@@ -59,7 +61,7 @@
         // External practice scheduler: unseen and incorrectly stored facts have
         // zero correct-recall strength. Include cutoff ties to avoid operand bias.
         const scored = pool.map(fact => {
-          const memory = this.memory.get(key(fact));
+          const memory = this.recallState(fact);
           return { fact, strength: memory && memory.value === answer(fact) ? memory.strength : 0 };
         });
         const strengths = scored.map(item => item.strength).sort((a, b) => a - b);
@@ -72,6 +74,8 @@
       return { ...pool[Math.floor(r() * pool.length)] };
     }
     decay() {
+      this.recallCache.clear();
+      if (this.recallModel) this.recallModel.decay();
       const f = this.config.forgetting;
       for (const m of this.memory.values()) {
         m.strength *= 1 - f * 0.002;
@@ -82,7 +86,15 @@
         if (this.random() < f * 0.001) r.strength *= 0.7;
       }
     }
-    availableMemory(f) { const m = this.memory.get(key(f)); return m && m.strength >= this.config.confidence ? m : null; }
+    recallState(f) {
+      if (!this.recallModel) return this.memory.get(key(f)) || null;
+      if (!this.recallCache.has(key(f))) {
+        const prediction = this.recallModel.predict(f, this.step);
+        this.recallCache.set(key(f), prediction ? { ...prediction, lastSeen: this.memory.get(key(f))?.lastSeen ?? null } : null);
+      }
+      return this.recallCache.get(key(f));
+    }
+    availableMemory(f) { const m = this.recallState(f); return m && m.strength >= this.config.confidence ? m : null; }
     availableRule(id) { const r = this.rules[id]; return r.origin && r.strength >= this.config.confidence; }
     solve(f, random, diagnostic = false) {
       const w = this.config.weights; const plans = [];
@@ -91,7 +103,7 @@
       const add = (strategy, value, actions, trace, rule = null, anchor = null) => plans.push({ strategy, value, actions, trace, rule, anchor, cost: costOf(actions) });
       add('draw', answer(f), baseActions, f.op === '+' ? [`Draw ${f.a} and ${f.b} marks in two arrays.`, `Join the arrays; count all ${f.a + f.b} marks from 1.`] : [`Draw ${f.a} marks and ${f.b} removal markers.`, `Remove ${f.b} marks; count ${f.a - f.b} remaining marks from 1.`]);
       const memory = this.availableMemory(f);
-      if (memory) add('recall', memory.value, { retrieve: 1 }, ['Retrieve the stored answer.']);
+      if (memory) add('recall', memory.value, { retrieve: 1 }, [this.config.model === 'neural' ? `Neural prediction: ${memory.value}, confidence ${(memory.strength * 100).toFixed(1)}%.` : this.config.model === 'actr' ? `Retrieve a chunk: activation ${memory.activation.toFixed(2)}, availability ${(memory.strength * 100).toFixed(1)}%.` : 'Retrieve the stored answer.']);
       if (this.availableRule('zero') && f.b === 0) add('rule', f.a, { rule: 1 }, ['Apply the zero rule.'], 'zero');
       if (this.availableRule('self') && f.op === '-' && f.a === f.b) add('rule', 0, { rule: 1 }, ['Apply the subtract-itself rule.'], 'self');
       if (this.availableRule('countOn') && f.op === '+') add('count', answer(f), { rule: 1, count: f.b }, [`Start at ${f.a}; count forward ${f.b} steps.`], 'countOn');
@@ -106,23 +118,33 @@
       }
       if (this.availableRule('inverse') && f.op === '-') {
         // Search stored additions, not an oracle-computed missing operand.
-        for (const m of this.memory.values()) if (m.fact.op === '+' && m.value === f.a && m.strength >= this.config.confidence && (m.fact.a === f.b || m.fact.b === f.b)) {
+        for (const seen of this.memory.values()) {
+          if (seen.fact.op !== '+' || (seen.fact.a !== f.b && seen.fact.b !== f.b)) continue;
+          const m = this.availableMemory(seen.fact);
+          if (m && m.value === f.a) {
           const value = m.fact.a === f.b ? m.fact.b : m.fact.a;
           add('compare', value, { compare: 1, retrieve: 1, rule: 1 }, [`Recall ${key(m.fact)} = ${m.value}; use the inverse relationship.`], 'inverse', key(m.fact)); break;
+          }
         }
       }
       // Comparison ability controls whether analogous solutions are considered.
       const eligible = plans.filter(p => p.strategy !== 'compare' || random() < this.config.comparison);
       eligible.sort((a, b) => a.cost - b.cost || (a.strategy === 'recall' ? -1 : 1));
-      const selected = random() < this.config.exploration ? eligible[Math.floor(random() * eligible.length)] : eligible[0];
+      let selected = random() < this.config.exploration ? eligible[Math.floor(random() * eligible.length)] : eligible[0];
+      const failedActivation = this.config.model === 'actr' && selected.strategy === 'recall' && random() >= memory.strength;
+      if (failedActivation) selected = eligible.find(plan => plan.strategy !== 'recall');
       const p = { ...selected, actions: { ...selected.actions }, trace: [...selected.trace] };
       // An unsuccessful memory attempt incurs effort before the fallback route.
-      const weak = this.memory.get(key(f));
+      const weak = this.recallState(f);
       p.sequence = [p.strategy];
-      if (!memory && weak && random() < weak.strength) {
+      if (failedActivation || (!memory && weak && random() < weak.strength)) {
         p.actions.retrieve = (p.actions.retrieve || 0) + 1; p.cost += w.retrieve;
-        p.trace.unshift('Try recall; confidence is too low. Use a fallback.'); p.sequence.unshift('failed-recall');
+        p.trace.unshift(failedActivation ? 'ACT-R-inspired retrieval fails stochastically; use a fallback.' : 'Try recall; confidence is too low. Use a fallback.'); p.sequence.unshift('failed-recall');
       }
+      p.recallConfidence = weak?.strength ?? 0;
+      p.recallPrediction = weak?.value ?? null;
+      p.activation = weak?.activation ?? null;
+      p.retrievalLatency = this.config.model === 'actr' && (p.strategy === 'recall' || p.sequence.includes('failed-recall')) ? (failedActivation ? Math.exp(-this.config.actrThreshold) : weak?.retrievalLatency ?? null) : null;
       const operations = (p.actions.count || 0) + (p.actions.remove || 0);
       if (operations && random() < 1 - (1 - this.config.slip) ** operations) {
         p.value = clamp(p.value + (random() < 0.5 ? -1 : 1), 0, 10);
@@ -135,6 +157,8 @@
       const k = key(f), previous = this.memory.get(k);
       const strength = previous && previous.value === value ? previous.strength : 0;
       this.memory.set(k, { fact: { ...f }, value, strength: strength + this.config.learning * (1 - strength), lastSeen: this.step });
+      if (this.recallModel) this.recallModel.learn(f, value, this.step);
+      this.recallCache.clear();
     }
     discover(f) {
       const k = key(f); const current = this.memory.get(k);
@@ -203,10 +227,11 @@
       const random = rng((this.config.seed + 99173) >>> 0);
       const rows = this.facts.map(f => ({ ...f, ...this.solve(f, random, true) }));
       const summarize = list => ({ n: list.length, accuracy: list.filter(r => r.correct).length / list.length, cost: list.reduce((s, r) => s + r.cost, 0) / list.length, recall: list.filter(r => r.strategy === 'recall').length / list.length });
-      return { step: this.step, ...summarize(rows), addition: summarize(rows.filter(r => r.op === '+')), subtraction: summarize(rows.filter(r => r.op === '-')) };
+      const unaided = this.facts.map(f => { const m = this.recallState(f); return { correct: !!m && m.value === answer(f), ready: !!m && m.strength >= this.config.confidence, confidence: m?.strength ?? 0 }; });
+      return { step: this.step, ...summarize(rows), addition: summarize(rows.filter(r => r.op === '+')), subtraction: summarize(rows.filter(r => r.op === '-')), unaided: { accuracy: unaided.filter(r => r.correct).length / unaided.length, coverage: unaided.filter(r => r.ready).length / unaided.length, confidentAccuracy: unaided.filter(r => r.ready).length ? unaided.filter(r => r.ready && r.correct).length / unaided.filter(r => r.ready).length : null } };
     }
     run(n = this.config.steps) { for (let i = 0; i < n; i++) this.next(); if (this.diagnostics.at(-1).step !== this.step) this.diagnostics.push(this.assess()); return this; }
-    export() { return { version: 1, model: 'Transparent strategy-based learner; predefined candidate-rule induction', config: this.config, domain: { maxTotal: 10, includesZero: true }, history: this.history, diagnostics: this.diagnostics, events: this.events, rules: Object.values(this.rules).map(({ evidenceKeys, ...r }) => r) }; }
+    export() { return { version: 2, model: models.labels[this.config.model], modelState: this.recallModel?.snapshot() ?? null, finalRecall: this.facts.map(fact => ({ fact, state: this.recallState(fact) })), config: this.config, domain: { maxTotal: 10, includesZero: true }, history: this.history, diagnostics: this.diagnostics, events: this.events, rules: Object.values(this.rules).map(({ evidenceKeys, ...r }) => r) }; }
   }
   return { Simulator, domain, defaults, ruleDefs, equation, key, answer, rng };
 });

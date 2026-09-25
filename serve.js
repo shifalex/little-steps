@@ -2,7 +2,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const files = new Set(['index.html', 'engine.js', 'app.js', 'styles.css']);
+const files = new Set(['index.html', 'models.js', 'engine.js', 'app.js', 'styles.css']);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
@@ -12,4 +12,4 @@ http.createServer((req, res) => {
     if (error) { res.writeHead(500); res.end('Could not read file'); return; }
     res.writeHead(200, { 'Content-Type': `${types[path.extname(name)]}; charset=utf-8`, 'Cache-Control': 'no-store' }); res.end(data);
   });
-}).listen(4173, '127.0.0.1', () => console.log('Little Steps: http://127.0.0.1:4173'));
+}).listen(Number(process.env.PORT || 4173), '127.0.0.1', () => console.log(`Little Steps: http://127.0.0.1:${process.env.PORT || 4173}`));
