@@ -7,7 +7,7 @@
 <div class="workspace">
 <aside>
 <form id="settings">
-<p id="settings-status" class="micro" role="status">Same seed + settings = same experiment.</p>
+<p id="settings-status" class="micro" role="status">A fresh random seed for each run.</p>
 <label class="field">Learning model<select id="learning-model"><option value="associative">Associative memory (original)</option><option value="actr">ACT-R-inspired memory</option><option value="neural">Neural network (MLP)</option></select></label>
 <p id="model-description" class="aside-description"></p>
 <div id="actr-settings" hidden><div class="field-row"><label class="field">Activation threshold<input id="actr-threshold" type="number" min="-5" max="5" step=".1" value="0" required></label><label class="field">Retrieval noise<input id="actr-noise" type="number" min=".05" max="2" step=".05" value=".4" required></label></div></div>
@@ -18,6 +18,8 @@
 <label class="field">Exercise order<select id="order" aria-describedby="order-description"><option value="mixed">Randomly mixed</option><option value="deliberate">Deliberate practice</option><option value="alternating">Alternate + and −</option><option value="families">Related fact families</option><option value="blocked">50 addition, then 50 subtraction</option><option value="small">Small numbers first</option></select></label>
 <p id="order-description" class="aside-description" hidden>Randomly choose from the weakest 20% of correct fact memories, including ties. Unseen or incorrectly remembered answers count as weakest. Re-evaluated before every attempt across both operations.</p>
 <div class="field-row"><label class="field">Attempts<input id="steps" type="number" min="50" max="10000" step="50" value="800" required></label><label class="field">Random seed<input id="seed" type="number" min="0" max="4294967295" step="1" value="42" required></label></div>
+<label class="field">Run randomness<select id="seed-mode"><option value="random">New random seed each run</option><option value="fixed">Use the seed above (reproducible)</option></select></label>
+<p class="micro">Each run varies by default. To replay a result or compare settings with the same randomness, choose “Use the seed above”. The completed run’s seed is shown above and included in exports.</p>
 <label class="field">After an answer<select id="feedback"><option value="answer">Show the correct answer</option><option value="retry">Guide a recount after an error</option><option value="none">No correction</option></select></label>
 <div class="section-title divided"><h2>Teacher moments</h2><span class="small-label">03</span></div><p class="aside-description">Lessons become available before the chosen attempt.</p>
 <div id="lessons"></div><button id="add-lesson" class="text-button" type="button">+ Add a lesson</button>

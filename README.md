@@ -8,6 +8,8 @@ See [ROADMAP.md](ROADMAP.md) for designed features that are not yet implemented.
 
 Open **index.html** in a modern browser. No installation or build is required. The app runs locally; no learner data is uploaded. Fonts are optional web fonts with local fallbacks.
 
+Each browser run uses a fresh random seed by default. Select **Use the seed above (reproducible)** under **Run randomness** to replay a seed or compare settings with the same randomness. The actual seed is displayed after each run and saved in JSON exports; **Compare all 3 models** uses the completed run’s seed for all models.
+
 Choose among **associative memory**, **ACT-R-inspired declarative memory**, and a real **neural network (MLP)**. All share the same strategy-based solver and explicit candidate-rule system. These are experimental models, not validated models of children. Use **Compare all 3 models** for a final assessment table; keep a baseline and change models for curve comparisons.
 
 ## Learning models

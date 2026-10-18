@@ -60,6 +60,11 @@ $('settings').addEventListener('input', dirty);
 $('order').addEventListener('change', () => { $('order-description').hidden = $('order').value !== 'deliberate'; });
 function run() {
   const scrollPosition = { left: window.scrollX, top: window.scrollY, behavior: 'instant' };
+  if ($('seed-mode').value === 'random') {
+    const previousSeed = +$('seed').value;
+    const nextSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+    $('seed').value = nextSeed === previousSeed ? (nextSeed + 1) >>> 0 : nextSeed;
+  }
   simulation = new Simulator(configFromForm()).run();
   modelComparison = null;
   $('settings-status').textContent = `Run complete · seed ${simulation.config.seed}.`;
